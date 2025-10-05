@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Fair-Share Experiment (Local Data Save)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        'primary-blue': '#3b82f6',
+                        'bg-gray': '#f3f4f6',
+                        // MODIFICATION 3: Changed liquid color to #FFC300
+                        'liquid-yellow': '#FFC300', 
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom styles for the experiment interface */
+        
+        body {
+            /* Set the background image using the canvas file path */
+            background-image: url("uploaded:THE FAIR-SHARE EXPERIMENT collage.jpg-9d94b598-d828-43f9-8920-6f0938890a4e");
+            background-size: cover; 
+            background-repeat: no-repeat;
+            background-position: center center;
+            background-attachment: fixed;
+            
+            /* Add a semi-transparent dark overlay for readability */
+            background-color: rgba(0, 0, 0, 0.4); 
+            background-blend-mode: darken;
+
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px; 
+        }
+
+        .experiment-container {
+            max-width: 600px; 
+            width: 90%;
+            background: white;
+            border-radius: 0.75rem; 
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1); 
+            padding: 2.5rem; 
+            transition: all 0.3s ease;
+        }
+        
+        /* MODIFICATION: Rescaling glass-wrapper height */
+        .glass-wrapper {
+            position: relative; 
+            height: 275px; /* New overall wrapper height: 250px glass height + margin */
+            width: 300px; 
+            display: flex;
+            justify-content: center;
+            align-items: flex-end; 
+            gap: 4rem; 
+            margin-top: 2rem; 
+        }
+
+        .glass {
+            width: 100px; 
+            height: 100%;
+            border: 3px solid black; /* Border color */
+            border-top: none; 
+            border-radius: 0 0 0.5rem 0.5rem; 
+            position: relative;
+            display: flex;
+            flex-direction: column-reverse;
+            overflow: hidden;
+        }
+
+        .liquid {
+            /* FIX 2: Set liquid color directly to ensure display reliability */
+            background-color: #FFC300; 
+            transition: height 0.2s ease-out;
+            width: 100%;
+            position: absolute;
+            bottom: 0;
+            left: 0;
+        }
+        
+        .liquid-line { 
+            /* Removed since we are using the new vertical line logic */
+            display: none; 
+        }
+        
+        /* MODIFICATION: Rescaling max-container height */
+        .max-container {
+            height: 250px; /* New height for the white area of the glass */
+            width: 100px;
+        }
+        
+        /* MODIFICATION: Vertical line changed to black */
+        .vertical-black-line {
+            position: absolute;
+            width: 4px; /* Thickness of the line */
+            background-color: black; /* Color set to black */
+            z-index: 10;
+            bottom: 0; 
+        }
+    </style>
+</head>
+<body class="font-sans">
+
+    <div id="app" class="experiment-container">
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- GLOBAL CONFIGURATION AND CONSTANTS ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? initialAuthToken : null;
+
+        let db = null;
+        let auth = null;
+        let userId = null;
+        let experimentData = [];
+        let trialIndex = 0;
+        let startTime = 0;
+        let currentTrial = {};
+        let timeoutHandler = null; 
+
+        // Stimulus and Experiment Configuration
+        const I_STANDARD_CONFIG = [50, 100, 150];
+        const DELTA_I_CONFIG = [-4, -3, -2, 0, 2, 3, 4];
+        const FRAME_CONFIG = ['Symmetric', 'Gain', 'Loss'];
+        const MAX_I_VALUE = 155; 
+        const MAX_HEIGHT_PX = 200; 
+        const RESPONSE_TIME_LIMIT_MS = 6000; // 6.0 seconds
+        const ITI_DURATION_MS = 500; // 500ms Inter-Trial Interval
+
+
+        const scaleItoHeight = (I) => {
+            return Math.round((I / MAX_I_VALUE) * MAX_HEIGHT_PX);
+        };
+
+        // --- FIREBASE INITIALIZATION AND AUTHENTICATION ---
+        async function initializeFirebase() {
+            if (!firebaseConfig) {
+                console.error("Firebase config not available. Data will not be saved.");
+                return;
+            }
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                userId = auth.currentUser?.uid || crypto.randomUUID();
+                console.log("Firebase initialized. User ID:", userId);
+
+            } catch (error) {
+                console.error("Error initializing or authenticating Firebase:", error);
+            }
+        }
+
+        // --- EXPERIMENT DATA GENERATION ---
+        function generateTrialList() {
+            const trials = [];
+            
+            // Generate Practice Trials (9 total)
+            const practice_I = [50, 100, 150];
+            const practice_delta = [3, -3, 0];
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    const I_S = practice_I[i];
+                    const delta_I = practice_delta[j];
+                    
+                    trials.push(createTrial(
+                        'Practice',
+                        FRAME_CONFIG[j], 
+                        I_S, 
+                        I_S + delta_I
+                    ));
+                }
+            }
+            
+            // --- FIX: Implement the required two-block structure for Main Trials ---
+            const mainConditions = [];
+            
+            // 1. Generate the 21 unique Frame x DeltaI combinations
+            FRAME_CONFIG.forEach(frame => {
+                DELTA_I_CONFIG.forEach(delta_I => {
+                    mainConditions.push({ frame, delta_I }); 
+                });
+            });
+
+            // 2. Separate into Block 1 (Symmetric) and Block 2 (Gain/Loss) conditions
+            const symmetricConditions = mainConditions.filter(c => c.frame === 'Symmetric'); // 7 conditions (for Block 1)
+            const framedConditions = mainConditions.filter(c => c.frame !== 'Symmetric'); // 14 conditions (for Block 2)
+
+            // 3. Repeat the sets 3 times and assign I_S
+            let block1Trials = []; // 21 trials (Symmetric/Different)
+            let block2Trials = []; // 42 trials (Gain/Loss/More-Less)
+            const REPETITION_FACTOR = 3; 
+            
+            // Block 1: Symmetric (3 repetitions of 7 conditions = 21 trials)
+            for (let r = 0; r < REPETITION_FACTOR; r++) {
+                symmetricConditions.forEach((cond, index) => {
+                    const overallIndex = block1Trials.length; 
+                    const I_S_index = overallIndex % I_STANDARD_CONFIG.length;
+                    const I_S = I_STANDARD_CONFIG[I_S_index];
+                    const I_C = I_S + cond.delta_I;
+
+                    block1Trials.push(createTrial('Main', cond.frame, I_S, I_C));
+                });
+            }
+            shuffleArray(block1Trials); // Shuffle Symmetric trials
+
+            // Block 2: Gain/Loss (3 repetitions of 14 conditions = 42 trials)
+            for (let r = 0; r < REPETITION_FACTOR; r++) {
+                framedConditions.forEach((cond, index) => {
+                    const overallIndex = block2Trials.length;
+                    const I_S_index = overallIndex % I_STANDARD_CONFIG.length;
+                    const I_S = I_STANDARD_CONFIG[I_S_index];
+                    const I_C = I_S + cond.delta_I;
+
+                    block2Trials.push(createTrial('Main', cond.frame, I_S, I_C));
+                });
+            }
+            shuffleArray(block2Trials); // Shuffle Gain/Loss trials
+            
+            // Concatenate all parts (9 practice + 21 Block 1 + 42 Block 2 = 72 total)
+            return trials.slice(0, 9).concat(block1Trials).concat(block2Trials);
+        }
+
+        function createTrial(type, frame, I_S, I_C) {
+            const prompt = getPrompt(frame);
+            return {
+                type: type,
+                trial_number: 0,
+                frame: frame,
+                I_Standard: I_S,
+                I_Comparison: I_C,
+                prompt: prompt,
+                response: null,
+                RT_ms: null,
+                timed_out: false,
+            };
+        }
+
+        function getPrompt(frame) {
+            switch (frame) {
+                case 'Symmetric':
+                    return "Is your share **DIFFERENT** from your sibling's share?";
+                case 'Gain':
+                    return "Is your share **MORE** than your sibling's share?";
+                case 'Loss':
+                    return "Is your share **LESS** than your sibling's share?";
+                default:
+                    return "";
+            }
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]]; 
+            }
+        }
+
+        // --- RENDER FUNCTIONS AND EXPERIMENT FLOW ---
+        function renderScreen(content) {
+            document.getElementById('app').innerHTML = content;
+        }
+
+        function renderFixationCross() {
+            // Unmount the main container content and render a full screen black ITI
+            document.body.innerHTML = `
+                <div id="fixation-screen" class="fixation-screen" style="background-color: black; position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; z-index: 1000;">
+                    <span class="fixation-cross" style="color: white; font-size: 4rem; font-weight: 300;">+</span>
+                </div>
+            `;
+            // Re-mount the main container after the ITI duration
+            setTimeout(() => {
+                document.body.innerHTML = `
+                    <div id="app" class="experiment-container"></div>
+                `;
+                startNextTrial(); 
+            }, ITI_DURATION_MS);
+        }
+
+        function startTrialTimer() {
+            let timeElapsed = 0;
+            const interval = 100;
+            const timeLimitSec = (RESPONSE_TIME_LIMIT_MS / 1000).toFixed(1);
+            
+            clearTimeout(timeoutHandler);
+            
+            const timerInterval = setInterval(() => {
+                timeElapsed += interval;
+                const remainingTime = Math.max(0, RESPONSE_TIME_LIMIT_MS - timeElapsed) / 1000;
+                const timerDisplay = document.getElementById('timer-display');
+                if (timerDisplay) {
+                    timerDisplay.textContent = remainingTime.toFixed(1);
+                }
+            }, interval);
+
+            timeoutHandler = setTimeout(() => {
+                clearInterval(timerInterval);
+                
+                const trial = experimentData[trialIndex];
+                
+                // Log a timeout response
+                trial.trial_number = trialIndex + 1;
+                trial.response = 'timeout'; 
+                trial.RT_ms = RESPONSE_TIME_LIMIT_MS;
+                trial.timed_out = true;
+
+                trialIndex++;
+                renderFixationCross(); // Move to the next trial with ITI
+            }, RESPONSE_TIME_LIMIT_MS);
+        }
+
+        function startNextTrial() {
+            // Break 1: After Practice (Index 9)
+            if (trialIndex === 9) {
+                handleBreakScreen('Practice_End');
+                return;
+            }
+            // Break 2: Mid-Experiment (After Block 1: Index 9 + 21 = Index 30)
+            if (trialIndex === 30) {
+                handleBreakScreen('Mid_Block');
+                return;
+            }
+            
+            const trial = experimentData[trialIndex];
+
+            if (!trial) {
+                // End of experiment (Trial 72)
+                document.removeEventListener('keydown', handleKeyResponse);
+                return renderThankYouScreen();
+            }
+
+            // Standard Trial Render
+            renderTrialScreen();
+        }
+
+        function handleBreakScreen(breakType) {
+            document.removeEventListener('keydown', handleKeyResponse);
+            clearTimeout(timeoutHandler); 
+            
+            let title = "";
+            let message = "";
+            let keyInstruction = "";
+
+            if (breakType === 'Practice_End') {
+                // MODIFICATION 1: Updated message for Block 1
+                title = "PRACTICE COMPLETE - MAIN EXPERIMENT START"; 
+                message = "You have successfully completed the practice trials. The main experiment is about to begin. Remember to answer quickly and accurately."; 
+                keyInstruction = "Press **Spacebar** to begin the Main Experiment (Block 1: \"DIFFERENT\" Questions)."; 
+            } else if (breakType === 'Mid_Block') {
+                // MODIFICATION 2: Updated title, message, and key instruction for Block 2
+                title = "BREAK";
+                message = "You have completed the first block of the main experiment. Please relax your eyes, stand up, and stretch if needed. The next block will contain the 'MORE' and 'LESS' questions.";
+                keyInstruction = "Press **Spacebar** when you are ready to begin the final block of trials (Block 2: \"MORE\"/\"LESS\" Questions).";
+            }
+            
+            const content = `
+                <div class="flex flex-col items-center text-center space-y-6">
+                    <h2 class="text-3xl font-extrabold text-gray-800 border-b pb-2">${title}</h2>
+                    <p class="text-lg text-gray-700">${message}</p>
+                    <p class="text-xl font-bold text-primary-blue mt-4">${keyInstruction.replace(/\*\*(.*?)\*\*/g, '<span class="font-extrabold text-red-600">$1</span>')}</p>
+                </div>
+            `;
+            renderScreen(content);
+            
+            const breakKeyHandler = (event) => {
+                if (event.code === 'Space') {
+                    document.removeEventListener('keydown', breakKeyHandler);
+                    document.addEventListener('keydown', handleKeyResponse);
+                    
+                    // FIX: Set index to the start of the next phase
+                    if (breakType === 'Practice_End') {
+                        trialIndex = 9; // Start of Block 1
+                    } else if (breakType === 'Mid_Block') {
+                        trialIndex = 30; // Start of Block 2
+                    }
+                    
+                    renderTrialScreen(); 
+                } 
+                // Removed the 'R' (Redo) option logic completely
+            };
+            document.addEventListener('keydown', breakKeyHandler);
+        }
+        
+        function renderWelcomeScreen() {
+            const content = `
+                <div class="flex flex-col items-center text-center">
+                    <h1 class="text-3xl font-extrabold text-gray-800 mb-3">The Fair-Share Experiment</h1>
+                    <div class="w-full max-w-sm bg-bg-gray p-6 rounded-xl shadow-inner">
+                        <h2 class="text-xl font-semibold text-primary-blue mb-4">Participant Information</h2>
+                        <form id="info-form" class="space-y-4">
+                            <div>
+                                <label for="name" class="block text-left text-sm font-medium text-gray-700">Name:</label>
+                                <input type="text" id="name" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-primary-blue focus:border-primary-blue text-base" required>
+                            </div>
+                            <div>
+                                <label for="age" class="block text-left text-sm font-medium text-gray-700">Age:</label>
+                                <input type="number" id="age" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-primary-blue focus:border-primary-blue text-base" min="18" required>
+                            </div>
+                            <div>
+                                <label for="gender" class="block text-left text-sm font-medium text-gray-700">Gender:</label>
+                                <select id="gender" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-primary-blue focus:border-primary-blue text-base" required>
+                                    <option value="" disabled selected>Select...</option>
+                                    <option value="male">male</option>
+                                    <option value="female">female</option>
+                                    <option value="Non-binary">Non-binary</option>
+                                    <option value="Prefer not to say">Prefer not to say</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="hasSiblings" class="block text-left text-sm font-medium text-gray-700">Do you have siblings?</label>
+                                <select id="hasSiblings" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-primary-blue focus:border-primary-blue text-base" required>
+                                    <option value="" disabled selected>Select...</option>
+                                    <option value="yes">Yes</option>
+                                    <option value="no">No</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="w-full py-3 bg-primary-blue text-white font-bold text-lg rounded-lg hover:bg-blue-700 transition duration-150 shadow-md">
+                                Start Instructions
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+            renderScreen(content);
+
+            document.getElementById('info-form').onsubmit = (e) => {
+                e.preventDefault();
+                currentTrial.name = document.getElementById('name').value;
+                currentTrial.age = parseInt(document.getElementById('age').value);
+                currentTrial.gender = document.getElementById('gender').value;
+                currentTrial.hasSiblings = document.getElementById('hasSiblings').value;
+                currentTrial.experiment_start_time = new Date().toISOString();
+                
+                if (currentTrial.name && currentTrial.age >= 18 && currentTrial.gender && currentTrial.hasSiblings) {
+                    renderInstructionScreen();
+                } 
+            };
+        }
+
+        function renderInstructionScreen() {
+            const content = `
+                <div class="text-left space-y-4">
+                    <h2 class="text-2xl font-bold text-gray-800 border-b pb-2">Experiment Instructions</h2>
+                    
+                    <p class="text-base text-gray-700">
+                        In this experiment, you will see two columns of liquid representing "shares".
+                        <span class="font-semibold text-primary-blue">The share on the left is always Your Share.</span> 
+                        <span class="font-semibold text-primary-blue">The share on the right is always your Sibling's Share.</span>
+                    </p>
+
+                    <h3 class="text-xl font-semibold text-gray-800">Your Task</h3>
+                    <p class="text-base text-gray-700">
+                        For each trial, you must quickly answer a question based on the two shares using the **'Y' key** (Yes) or the **'N' key** (No) on your keyboard.
+                    </p>
+                    
+                    <ul class="list-disc list-inside space-y-2 ml-4 bg-yellow-50 p-4 rounded-lg border border-yellow-200 text-base">
+                        <li class="font-semibold text-gray-800">Press **'Y'** for Yes</li>
+                        <li class="font-semibold text-gray-800">Press **'N'** for No</li>
+                    </ul>
+
+                    <p class="text-base text-gray-700">
+                        The question will change throughout the experiment, asking if your share is "DIFFERENT", "MORE", or "LESS" than your sibling's. Please read the question carefully each time.
+                    </p>
+
+                    <h3 class="text-xl font-semibold text-gray-800">The Trials</h3>
+                    <p class="text-base text-gray-700">
+                        You will first complete **9 Practice Trials** followed by **63 Main Trials**. The entire experiment takes about **8-10 minutes**. Please try to be as accurate and quick as possible!
+                    </p>
+
+                    <div class="flex justify-center mt-6">
+                        <button id="start-btn" class="px-6 py-3 bg-green-600 text-white font-bold text-lg rounded-lg hover:bg-green-700 transition duration-150 shadow-md">
+                            Start Practice Trials
+                        </button>
+                    </div>
+                </div>
+            `;
+            renderScreen(content);
+            document.getElementById('start-btn').onclick = () => startExperiment();
+        }
+
+        // Function to generate the trial screen content
+        function renderTrialScreen() {
+           const trial = experimentData[trialIndex];
+           if (!trial) {
+           clearTimeout(timeoutHandler);
+           document.removeEventListener('keydown', handleKeyResponse);
+           return renderThankYouScreen();
+          }
+
+    const heightS = scaleItoHeight(trial.I_Standard);
+    const heightC = scaleItoHeight(trial.I_Comparison);
+    const promptHTML = trial.prompt.replace(/\*\*(.*?)\*\*/g, '<span class="text-primary-blue font-extrabold">$1</span>');
+    const timeLimitSec = (RESPONSE_TIME_LIMIT_MS / 1000).toFixed(1);
+
+    const content = `
+        <div class="flex flex-col items-center text-center space-y-4">
+            <div class="text-base font-medium text-gray-500" style="visibility: hidden; height: 0; overflow: hidden;">
+                Trial ${trialIndex + 1} of ${experimentData.length} (${trial.type})
+                <span class="text-red-600 font-bold ml-4">Time Remaining: <span id="timer-display">${timeLimitSec}</span>s</span>
+            </div>
+            
+            <div class="w-full max-w-lg bg-bg-gray p-4 rounded-lg shadow-inner border-2 border-primary-blue/50">
+                <p id="question-prompt" class="text-xl font-bold text-gray-800 transition duration-150">
+                    ${promptHTML}
+                </p>
+            </div>
+
+            <div class="glass-wrapper"> 
+                <div class="flex flex-col items-center">
+                    <div class="text-base font-semibold text-gray-700 mb-2">Your Share</div>
+                    <div class="glass max-container">
+                        <div id="comparison-liquid" class="liquid" style="height: ${heightC}px;"></div>
+                        <div class="vertical-black-line" style="height: ${heightC}px; left: 48px;"></div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col items-center">
+                    <div class="text-base font-semibold text-gray-700 mb-2">Sibling's Share</div>
+                    <div class="glass max-container">
+                        <div class="liquid" style="height: ${heightS}px;"></div>
+                        <div class="vertical-black-line" style="height: ${heightS}px; left: 48px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <p class="text-lg font-semibold text-gray-600">Press **Y** (Yes) or **N** (No)</p>
+            </div>
+        </div>
+    `;
+    renderScreen(content);
+    
+    startTime = performance.now();
+    startTrialTimer();
+}
+
+        function renderThankYouScreen() {
+            const content = `
+                <div class="flex flex-col items-center text-center space-y-4">
+                    <h2 class="text-3xl font-extrabold text-green-600 mb-4">Experiment Complete!</h2>
+                    <p class="text-lg text-gray-700">
+                        Thank you for your invaluable participation. Your results are ready to be saved.
+                    </p>
+                    
+                    <p class="text-xl font-semibold text-gray-800 mt-4">
+                        Click below to download your data file and finalize your participation.
+                    </p>
+
+                    <button id="submit-btn" class="px-8 py-4 bg-primary-blue text-white font-bold text-xl rounded-lg hover:bg-blue-700 transition duration-150 shadow-lg">
+                        Download Data File & Finish
+                    </button>
+
+                    <div id="data-status" class="mt-3 text-green-600 font-medium text-sm hidden">
+                        Data is being prepared...
+                    </div>
+                </div>
+            `;
+            renderScreen(content);
+            document.getElementById('submit-btn').onclick = () => submitDataToGoogleForm();
+        }
+
+        // --- EXPERIMENT LOGIC ---
+
+        function startExperiment() {
+            experimentData = generateTrialList();
+            trialIndex = 0;
+            experimentData.forEach(trial => {
+                Object.assign(trial, {
+                    name: currentTrial.name,
+                    age: currentTrial.age,
+                    gender: currentTrial.gender,
+                    hasSiblings: currentTrial.hasSiblings,
+                    experiment_start_time: currentTrial.experiment_start_time,
+                    userId: userId,
+                });
+            });
+            
+            document.addEventListener('keydown', handleKeyResponse);
+            startNextTrial();
+        }
+
+        function handleKeyResponse(event) {
+            const key = event.key.toUpperCase();
+            if (key === 'Y' || key === 'N') {
+                clearTimeout(timeoutHandler); 
+                
+                const RT_ms = performance.now() - startTime;
+                
+                const trial = experimentData[trialIndex];
+                trial.trial_number = trialIndex + 1;
+                trial.response = key.toLowerCase(); 
+                trial.RT_ms = Math.round(RT_ms * 10) / 10;
+                trial.timed_out = false;
+                
+                trialIndex++;
+                renderFixationCross(); 
+            }
+        }
+
+        // --- DATA SUBMISSION (Local File Download) ---
+
+        async function submitDataToGoogleForm() {
+            // 1. Silent Firebase Backup (Keep this for redundancy)
+            document.getElementById('data-status').innerHTML = "Data is being prepared for download...";
+            document.getElementById('data-status').classList.remove('hidden');
+
+            if (db && userId) {
+                const docRef = collection(db, `artifacts/${appId}/public/data/fair_share_experiment_results`);
+                try {
+                    await addDoc(docRef, {
+                        userId: userId,
+                        name: currentTrial.name, 
+                        age: currentTrial.age,
+                        gender: currentTrial.gender,
+                        hasSiblings: currentTrial.hasSiblings,
+                        completionTime: new Date().toISOString(),
+                        experimentType: "Fair-Share Perception",
+                        data: experimentData
+                    });
+                    console.log("Data successfully backed up to Firebase Firestore.");
+                } catch (e) {
+                    console.error("Error saving data to Firestore (Silent backup failed): ", e);
+                }
+            }
+            
+            // 2. Prepare the data for local file download
+            try {
+                // Combine participant info and trial data into a single object for the JSON file
+                const fullJsonData = JSON.stringify({
+                    participant_info: currentTrial,
+                    experiment_data: experimentData
+                }, null, 2); 
+
+                // Construct the filename using the participant's name
+                const safeName = currentTrial.name.replace(/\s+/g, '_'); 
+                const filename = `FairShareData_${safeName}_${Date.now()}.json`;
+
+                const blob = new Blob([fullJsonData], { type: 'application/json' });
+                
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                
+                document.body.appendChild(a);
+                a.click();
+                
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                console.log(`Successfully generated and downloaded file: ${filename}`);
+
+            } catch (e) {
+                console.error("CRITICAL: Error during local file download process:", e);
+                document.getElementById('data-status').innerHTML = "Error preparing download. Please contact the researcher.";
+                return;
+            }
+
+            // 3. Update UI to instruct the user on the next step
+            document.getElementById('submit-btn').disabled = true;
+            document.getElementById('submit-btn').innerHTML = "File Downloaded!";
+            document.getElementById('data-status').classList.add('text-black');
+            document.getElementById('data-status').classList.remove('text-green-600');
+            document.getElementById('data-status').innerHTML = "Data file **FairShareData...json** downloaded. **Please locate the file and follow the instructions provided by the researcher (e.g., email or upload the file).**";
+        }
+
+        // --- STARTUP ---
+        window.onload = async () => {
+            await initializeFirebase();
+            renderWelcomeScreen();
+        };
+
+    </script>
+</body>
+</html>
