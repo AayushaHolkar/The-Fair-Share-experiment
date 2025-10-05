@@ -1,5 +1,6 @@
 # The-Fair-Share-experiment
 NS201 Assignment
+<img width="1920" height="1080" alt="THE FAIR-SHARE EXPERIMENT" src="https://github.com/user-attachments/assets/cbaef90f-dc89-44a0-ac52-f2d58da30e27" />
 
 *The Fair-Share Experiment: Did Your Sibling Cheat You Out of Soda?* 🥤
 
@@ -19,5 +20,5 @@ We need your sharp eyes and judgment!
 Your participation is crucial for my final assignment. Please help me gather the data I need, and feel free to share this link with anyone you know! Thank you!
 
 
-<img width="1920" height="1080" alt="THE FAIR-SHARE EXPERIMENT" src="https://github.com/user-attachments/assets/cbaef90f-dc89-44a0-ac52-f2d58da30e27" />
+
 
