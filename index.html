@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Fair-Share Experiment (Local Data Save)</title>
+    <title>The Fair-Share Task</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -13,10 +13,10 @@
                         sans: ['Inter', 'sans-serif'],
                     },
                     colors: {
+                        // Purple liquid color
+                        'liquid-purple': '#800080', 
                         'primary-blue': '#3b82f6',
                         'bg-gray': '#f3f4f6',
-                        // MODIFICATION 3: Changed liquid color to #FFC300
-                        'liquid-yellow': '#FFC300', 
                     }
                 }
             }
@@ -24,641 +24,850 @@
     </script>
     <style>
         /* Custom styles for the experiment interface */
-        
         body {
-            /* Set the background image using the canvas file path */
-            background-image: url("uploaded:THE FAIR-SHARE EXPERIMENT collage.jpg-9d94b598-d828-43f9-8920-6f0938890a4e");
-            background-size: cover; 
-            background-repeat: no-repeat;
-            background-position: center center;
-            background-attachment: fixed;
-            
-            /* Add a semi-transparent dark overlay for readability */
-            background-color: rgba(0, 0, 0, 0.4); 
-            background-blend-mode: darken;
-
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px; 
+            background-color: #f3f4f6;
         }
-
-        .experiment-container {
-            max-width: 600px; 
-            width: 90%;
-            background: white;
-            border-radius: 0.75rem; 
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1); 
-            padding: 2.5rem; 
-            transition: all 0.3s ease;
+        .container-box {
+            background-color: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
         }
-        
-        /* MODIFICATION: Rescaling glass-wrapper height */
-        .glass-wrapper {
-            position: relative; 
-            height: 275px; /* New overall wrapper height: 250px glass height + margin */
-            width: 300px; 
-            display: flex;
-            justify-content: center;
-            align-items: flex-end; 
-            gap: 4rem; 
-            margin-top: 2rem; 
-        }
-
-        .glass {
-            width: 100px; 
-            height: 100%;
-            border: 3px solid black; /* Border color */
-            border-top: none; 
-            border-radius: 0 0 0.5rem 0.5rem; 
+        .stimulus-vial {
             position: relative;
-            display: flex;
-            flex-direction: column-reverse;
+            width: 100px;
+            height: 250px; /* GLASS_MAX_HEIGHT = 250px */
+            border: 4px solid #333;
+            border-bottom: 8px solid #333; 
+            border-radius: 10px;
             overflow: hidden;
+            display: inline-block;
+            margin: 0 20px;
+            background-color: #eee;
         }
-
-        .liquid {
-            /* FIX 2: Set liquid color directly to ensure display reliability */
-            background-color: #FFC300; 
-            transition: height 0.2s ease-out;
-            width: 100%;
+        .stimulus-liquid {
             position: absolute;
             bottom: 0;
             left: 0;
+            width: 100%;
+            background-color: #800080; /* Purple liquid */
+            transition: none; /* Liquid height must change instantly */
         }
-        
-        .liquid-line { 
-            /* Removed since we are using the new vertical line logic */
-            display: none; 
+        /* Custom styles for the quick feedback cue (Fixation/Feedback) */
+        #feedback-cue {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+            z-index: 100;
+            background-color: transparent;
+            color: transparent;
+            pointer-events: none;
+            transition: none;
         }
-        
-        /* MODIFICATION: Rescaling max-container height */
-        .max-container {
-            height: 250px; /* New height for the white area of the glass */
-            width: 100px;
-        }
-        
-        /* MODIFICATION: Vertical line changed to black */
-        .vertical-black-line {
-            position: absolute;
-            width: 4px; /* Thickness of the line */
-            background-color: black; /* Color set to black */
-            z-index: 10;
-            bottom: 0; 
+        #feedback-message {
+            font-size: 2rem;
+            margin-top: 10px; 
+            font-weight: bold;
         }
     </style>
 </head>
-<body class="font-sans">
+<body class="font-sans min-h-screen flex items-center justify-center p-4">
 
-    <div id="app" class="experiment-container">
+    <div id="experiment-container" class="container-box max-w-4xl w-full p-8 rounded-xl text-center">
+        </div>
+
+    <div id="feedback-cue">
+        <div id="cue-content"></div>
     </div>
+    
+    <script>
+        // --- 1. CORE CONFIGURATION CONSTANTS (180 Trials, 5 Blocks of 36) ---
+        
+        // Staircase Parameters
+        const STAIR_START_PERC = 0.14;        
+        const STAIR_N_UP = 1;                 
+        const STAIR_N_DOWN = 3;               
+        const STAIR_STEP_PERC = 0.04;         
+        const STAIR_MIN_PERC = 0.02;          
+        const STAIR_MAX_REVERSALS = 8;        
+        
+        // Trial Design Parameters
+        const I_STANDARD_LEVELS = [50, 100, 150]; 
+        const NUM_STAIRCASES = I_STANDARD_LEVELS.length;
+        
+        // Main Experiment Structure
+        const NUM_BLOCKS = 5;                 
+        const TOTAL_TRIALS_MAIN = 180;        
+        const TRIALS_PER_BLOCK = 36;          
+        
+        // Trials per baseline (staircase)
+        const BASELINE_TOTAL_TRIALS = 60;     
+        const CATCH_TRIAL_PERC = 0.20;        
+        const NUM_CATCH_TRIALS = 12;          
+        const STAIR_MAX_TRIALS = 48;          
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // Timing & Responses
+        const ITI_PRACTICE_MS = 2000;         
+        const ITI_FIXATION_MS = 500;          
+        const RESPONSE_TIME_LIMIT_MS = 3000;  
+        const KEY_SAME = 's';                 
+        const KEY_DIFFERENT = 'd';            
+        const KEY_CONTINUE = ' ';             
 
-        // --- GLOBAL CONFIGURATION AND CONSTANTS ---
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? initialAuthToken : null;
+        // Visuals and Scaling
+        const GLASS_MAX_HEIGHT_PX = 250;      
+        const MAX_I_VALUE = 150;              
+        const MAX_POSSIBLE_I_COMP = MAX_I_VALUE * (1 + STAIR_START_PERC); 
+        const SCALING_FACTOR = GLASS_MAX_HEIGHT_PX / (MAX_POSSIBLE_I_COMP * 1.25); 
+        
+        // JND Calculation
+        const REVERSALS_TO_AVERAGE = 6;       
 
-        let db = null;
-        let auth = null;
-        let userId = null;
-        let experimentData = [];
-        let trialIndex = 0;
-        let startTime = 0;
-        let currentTrial = {};
-        let timeoutHandler = null; 
+        // --- 2. ADAPTIVE STAIRCASE CLASS ---
+        class ProportionalStaircase {
+            constructor(I_standard) {
+                this.I_standard = I_standard;
+                this.currentPerc = STAIR_START_PERC;
+                this.correctCount = 0;
+                this.incorrectCount = 0;
+                this.reversals = [];
+                this.lastDirection = 0; 
+                this.isTerminated = false;
+                this.trialCount = 0;
+            }
 
-        // Stimulus and Experiment Configuration
-        const I_STANDARD_CONFIG = [50, 100, 150];
-        const DELTA_I_CONFIG = [-4, -3, -2, 0, 2, 3, 4];
-        const FRAME_CONFIG = ['Symmetric', 'Gain', 'Loss'];
-        const MAX_I_VALUE = 155; 
-        const MAX_HEIGHT_PX = 200; 
-        const RESPONSE_TIME_LIMIT_MS = 6000; // 6.0 seconds
-        const ITI_DURATION_MS = 500; // 500ms Inter-Trial Interval
+            getCurrentDeltaI() {
+                return this.currentPerc * this.I_standard;
+            }
 
+            addData(isCorrect) {
+                if (this.isTerminated) return;
 
-        const scaleItoHeight = (I) => {
-            return Math.round((I / MAX_I_VALUE) * MAX_HEIGHT_PX);
+                const prevPerc = this.currentPerc;
+                let newDirection = 0;
+
+                if (isCorrect) {
+                    this.correctCount++;
+                    this.incorrectCount = 0;
+                    if (this.correctCount >= STAIR_N_DOWN) {
+                        this.currentPerc = Math.max(STAIR_MIN_PERC, prevPerc - STAIR_STEP_PERC);
+                        this.correctCount = 0;
+                        newDirection = -1;
+                    }
+                } else { 
+                    this.incorrectCount++;
+                    this.correctCount = 0;
+                    if (this.incorrectCount >= STAIR_N_UP) {
+                        this.currentPerc = Math.min(STAIR_START_PERC, prevPerc + STAIR_STEP_PERC);
+                        this.incorrectCount = 0;
+                        newDirection = 1;
+                    }
+                }
+
+                this.trialCount++;
+
+                if (newDirection !== 0 && this.lastDirection !== 0 && newDirection !== this.lastDirection) {
+                    this.reversals.push(prevPerc * this.I_standard); 
+                }
+
+                if (newDirection !== 0) {
+                    this.lastDirection = newDirection;
+                }
+
+                if (this.reversals.length >= STAIR_MAX_REVERSALS || this.trialCount >= STAIR_MAX_TRIALS) {
+                    this.isTerminated = true;
+                }
+            }
+
+            calculateJND() {
+                if (this.reversals.length < REVERSALS_TO_AVERAGE) {
+                    return { JND: NaN, Consistency: NaN, kValue: NaN, numReversals: this.reversals.length };
+                }
+
+                const finalReversals = this.reversals.slice(-REVERSALS_TO_AVERAGE);
+                const sum = finalReversals.reduce((a, b) => a + b, 0);
+                const JND = sum / finalReversals.length;
+                
+                const mean = JND;
+                const squaredDifferences = finalReversals.map(r => (r - mean) ** 2);
+                const variance = squaredDifferences.reduce((a, b) => a + b, 0) / finalReversals.length;
+                const consistency = Math.sqrt(variance);
+
+                const kValue = JND / this.I_standard;
+
+                return {
+                    JND: JND.toFixed(3),
+                    Consistency: consistency.toFixed(3),
+                    kValue: kValue.toFixed(4),
+                    numReversals: this.reversals.length
+                };
+            }
+        }
+
+        // --- 3. EXPERIMENT STATE & INITIALIZATION ---
+        
+        let participantInfo = {}; 
+        let staircaseHandlers = {};
+        let trialData = [];
+        let mainTrialList = [];
+        let practiceTrialList = [];
+        
+        let currentTrialIndex = 0;
+        let isPractice = true;
+        let isWaitingForResponse = false;
+        let timeoutID = null;
+        let currentBlock = 0;
+        let mainTrialsCompletedInBlock = 0;
+
+        const container = document.getElementById('experiment-container');
+        const feedbackCue = document.getElementById('feedback-cue');
+        
+        // Initialize staircase handlers for each I_standard
+        I_STANDARD_LEVELS.forEach(I => {
+            staircaseHandlers[I] = new ProportionalStaircase(I);
+        });
+        
+        // --- 4. DATA LOGGING & CALCULATION ---
+
+        const calculateAllJNDs = () => {
+            const results = {};
+            let overallJNDs = [];
+
+            I_STANDARD_LEVELS.forEach(I => {
+                const handler = staircaseHandlers[I];
+                const jndResult = handler.calculateJND();
+                results[I] = jndResult;
+
+                if (!isNaN(parseFloat(jndResult.JND))) {
+                    overallJNDs.push(parseFloat(jndResult.JND));
+                }
+            });
+
+            const overallJND = overallJNDs.length > 0 
+                ? (overallJNDs.reduce((a, b) => a + b) / overallJNDs.length).toFixed(3)
+                : 'N/A';
+
+            return {
+                JNDsByStandard: results,
+                OverallJND: overallJND,
+            };
         };
 
-        // --- FIREBASE INITIALIZATION AND AUTHENTICATION ---
-        async function initializeFirebase() {
-            if (!firebaseConfig) {
-                console.error("Firebase config not available. Data will not be saved.");
-                return;
-            }
-            try {
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
+        const calculateAccuracy = (isMain) => {
+            const subset = trialData.filter(t => t.is_practice === !isMain);
+            const total = subset.length;
+            const correct = subset.filter(t => t.is_correct).length;
+            return total > 0 ? (correct / total) : 0;
+        };
+        
+        // --- 5. TRIAL GENERATION & FLOW CONTROL ---
 
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-
-                userId = auth.currentUser?.uid || crypto.randomUUID();
-                console.log("Firebase initialized. User ID:", userId);
-
-            } catch (error) {
-                console.error("Error initializing or authenticating Firebase:", error);
-            }
-        }
-
-        // --- EXPERIMENT DATA GENERATION ---
-        function generateTrialList() {
-            const trials = [];
-            
-            // Generate Practice Trials (9 total)
-            const practice_I = [50, 100, 150];
-            const practice_delta = [3, -3, 0];
-            for (let i = 0; i < 3; i++) {
-                for (let j = 0; j < 3; j++) {
-                    const I_S = practice_I[i];
-                    const delta_I = practice_delta[j];
-                    
-                    trials.push(createTrial(
-                        'Practice',
-                        FRAME_CONFIG[j], 
-                        I_S, 
-                        I_S + delta_I
-                    ));
-                }
-            }
-            
-            // --- FIX: Implement the required two-block structure for Main Trials ---
-            const mainConditions = [];
-            
-            // 1. Generate the 21 unique Frame x DeltaI combinations
-            FRAME_CONFIG.forEach(frame => {
-                DELTA_I_CONFIG.forEach(delta_I => {
-                    mainConditions.push({ frame, delta_I }); 
-                });
-            });
-
-            // 2. Separate into Block 1 (Symmetric) and Block 2 (Gain/Loss) conditions
-            const symmetricConditions = mainConditions.filter(c => c.frame === 'Symmetric'); // 7 conditions (for Block 1)
-            const framedConditions = mainConditions.filter(c => c.frame !== 'Symmetric'); // 14 conditions (for Block 2)
-
-            // 3. Repeat the sets 3 times and assign I_S
-            let block1Trials = []; // 21 trials (Symmetric/Different)
-            let block2Trials = []; // 42 trials (Gain/Loss/More-Less)
-            const REPETITION_FACTOR = 3; 
-            
-            // Block 1: Symmetric (3 repetitions of 7 conditions = 21 trials)
-            for (let r = 0; r < REPETITION_FACTOR; r++) {
-                symmetricConditions.forEach((cond, index) => {
-                    const overallIndex = block1Trials.length; 
-                    const I_S_index = overallIndex % I_STANDARD_CONFIG.length;
-                    const I_S = I_STANDARD_CONFIG[I_S_index];
-                    const I_C = I_S + cond.delta_I;
-
-                    block1Trials.push(createTrial('Main', cond.frame, I_S, I_C));
-                });
-            }
-            shuffleArray(block1Trials); // Shuffle Symmetric trials
-
-            // Block 2: Gain/Loss (3 repetitions of 14 conditions = 42 trials)
-            for (let r = 0; r < REPETITION_FACTOR; r++) {
-                framedConditions.forEach((cond, index) => {
-                    const overallIndex = block2Trials.length;
-                    const I_S_index = overallIndex % I_STANDARD_CONFIG.length;
-                    const I_S = I_STANDARD_CONFIG[I_S_index];
-                    const I_C = I_S + cond.delta_I;
-
-                    block2Trials.push(createTrial('Main', cond.frame, I_S, I_C));
-                });
-            }
-            shuffleArray(block2Trials); // Shuffle Gain/Loss trials
-            
-            // Concatenate all parts (9 practice + 21 Block 1 + 42 Block 2 = 72 total)
-            return trials.slice(0, 9).concat(block1Trials).concat(block2Trials);
-        }
-
-        function createTrial(type, frame, I_S, I_C) {
-            const prompt = getPrompt(frame);
-            return {
-                type: type,
-                trial_number: 0,
-                frame: frame,
-                I_Standard: I_S,
-                I_Comparison: I_C,
-                prompt: prompt,
-                response: null,
-                RT_ms: null,
-                timed_out: false,
-            };
-        }
-
-        function getPrompt(frame) {
-            switch (frame) {
-                case 'Symmetric':
-                    return "Is your share **DIFFERENT** from your sibling's share?";
-                case 'Gain':
-                    return "Is your share **MORE** than your sibling's share?";
-                case 'Loss':
-                    return "Is your share **LESS** than your sibling's share?";
-                default:
-                    return "";
-            }
-        }
-
-        function shuffleArray(array) {
+        const shuffle = (array) => {
             for (let i = array.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]]; 
+                [array[i], array[j]] = [array[j], array[i]];
             }
-        }
+        };
 
-        // --- RENDER FUNCTIONS AND EXPERIMENT FLOW ---
-        function renderScreen(content) {
-            document.getElementById('app').innerHTML = content;
-        }
-
-        function renderFixationCross() {
-            // Unmount the main container content and render a full screen black ITI
-            document.body.innerHTML = `
-                <div id="fixation-screen" class="fixation-screen" style="background-color: black; position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; z-index: 1000;">
-                    <span class="fixation-cross" style="color: white; font-size: 4rem; font-weight: 300;">+</span>
-                </div>
-            `;
-            // Re-mount the main container after the ITI duration
-            setTimeout(() => {
-                document.body.innerHTML = `
-                    <div id="app" class="experiment-container"></div>
-                `;
-                startNextTrial(); 
-            }, ITI_DURATION_MS);
-        }
-
-        function startTrialTimer() {
-            let timeElapsed = 0;
-            const interval = 100;
-            const timeLimitSec = (RESPONSE_TIME_LIMIT_MS / 1000).toFixed(1);
+        const generateMasterTrialList = () => {
+            let list = [];
             
-            clearTimeout(timeoutHandler);
-            
-            const timerInterval = setInterval(() => {
-                timeElapsed += interval;
-                const remainingTime = Math.max(0, RESPONSE_TIME_LIMIT_MS - timeElapsed) / 1000;
-                const timerDisplay = document.getElementById('timer-display');
-                if (timerDisplay) {
-                    timerDisplay.textContent = remainingTime.toFixed(1);
+            // 1. Generate ALL 60 trials per baseline (48 adaptive + 12 catch)
+            for (const I_standard of I_STANDARD_LEVELS) {
+                let currentStaircaseTrials = [];
+
+                // Add 12 catch trials (Delta I = 0)
+                for (let i = 0; i < NUM_CATCH_TRIALS; i++) {
+                    currentStaircaseTrials.push({
+                        I_standard,
+                        is_catch: true,
+                        is_adaptive: false,
+                        staircase_I_index: I_standard,
+                    });
                 }
-            }, interval);
-
-            timeoutHandler = setTimeout(() => {
-                clearInterval(timerInterval);
                 
-                const trial = experimentData[trialIndex];
+                // Add 48 adaptive trials
+                for (let i = 0; i < STAIR_MAX_TRIALS; i++) {
+                    currentStaircaseTrials.push({
+                        I_standard,
+                        is_catch: false,
+                        is_adaptive: true,
+                        staircase_I_index: I_standard,
+                        trial_index_in_stair: i,
+                    });
+                }
                 
-                // Log a timeout response
-                trial.trial_number = trialIndex + 1;
-                trial.response = 'timeout'; 
-                trial.RT_ms = RESPONSE_TIME_LIMIT_MS;
-                trial.timed_out = true;
-
-                trialIndex++;
-                renderFixationCross(); // Move to the next trial with ITI
-            }, RESPONSE_TIME_LIMIT_MS);
-        }
-
-        function startNextTrial() {
-            // Break 1: After Practice (Index 9)
-            if (trialIndex === 9) {
-                handleBreakScreen('Practice_End');
-                return;
-            }
-            // Break 2: Mid-Experiment (After Block 1: Index 9 + 21 = Index 30)
-            if (trialIndex === 30) {
-                handleBreakScreen('Mid_Block');
-                return;
+                shuffle(currentStaircaseTrials);
+                list = list.concat(currentStaircaseTrials);
             }
             
-            const trial = experimentData[trialIndex];
+            shuffle(list);
 
-            if (!trial) {
-                // End of experiment (Trial 72)
-                document.removeEventListener('keydown', handleKeyResponse);
-                return renderThankYouScreen();
-            }
-
-            // Standard Trial Render
-            renderTrialScreen();
-        }
-
-        function handleBreakScreen(breakType) {
-            document.removeEventListener('keydown', handleKeyResponse);
-            clearTimeout(timeoutHandler); 
+            // 2. Set up practice trials (10 trials, fixed difference)
+            practiceTrialList = [];
+            const practiceStandards = [100, 100, 50, 150, 50, 150, 100, 50, 150, 100];
+            const practicePerc = [0.10, 0, 0.14, 0.05, 0, 0.12, 0.08, 0.10, 0, 0.03]; 
             
-            let title = "";
-            let message = "";
-            let keyInstruction = "";
-
-            if (breakType === 'Practice_End') {
-                // MODIFICATION 1: Updated message for Block 1
-                title = "PRACTICE COMPLETE - MAIN EXPERIMENT START"; 
-                message = "You have successfully completed the practice trials. The main experiment is about to begin. Remember to answer quickly and accurately."; 
-                keyInstruction = "Press **Spacebar** to begin the Main Experiment (Block 1: \"DIFFERENT\" Questions)."; 
-            } else if (breakType === 'Mid_Block') {
-                // MODIFICATION 2: Updated title, message, and key instruction for Block 2
-                title = "BREAK";
-                message = "You have completed the first block of the main experiment. Please relax your eyes, stand up, and stretch if needed. The next block will contain the 'MORE' and 'LESS' questions.";
-                keyInstruction = "Press **Spacebar** when you are ready to begin the final block of trials (Block 2: \"MORE\"/\"LESS\" Questions).";
-            }
-            
-            const content = `
-                <div class="flex flex-col items-center text-center space-y-6">
-                    <h2 class="text-3xl font-extrabold text-gray-800 border-b pb-2">${title}</h2>
-                    <p class="text-lg text-gray-700">${message}</p>
-                    <p class="text-xl font-bold text-primary-blue mt-4">${keyInstruction.replace(/\*\*(.*?)\*\*/g, '<span class="font-extrabold text-red-600">$1</span>')}</p>
-                </div>
-            `;
-            renderScreen(content);
-            
-            const breakKeyHandler = (event) => {
-                if (event.code === 'Space') {
-                    document.removeEventListener('keydown', breakKeyHandler);
-                    document.addEventListener('keydown', handleKeyResponse);
-                    
-                    // FIX: Set index to the start of the next phase
-                    if (breakType === 'Practice_End') {
-                        trialIndex = 9; // Start of Block 1
-                    } else if (breakType === 'Mid_Block') {
-                        trialIndex = 30; // Start of Block 2
-                    }
-                    
-                    renderTrialScreen(); 
-                } 
-                // Removed the 'R' (Redo) option logic completely
-            };
-            document.addEventListener('keydown', breakKeyHandler);
-        }
-        
-        function renderWelcomeScreen() {
-            const content = `
-                <div class="flex flex-col items-center text-center">
-                    <h1 class="text-3xl font-extrabold text-gray-800 mb-3">The Fair-Share Experiment</h1>
-                    <div class="w-full max-w-sm bg-bg-gray p-6 rounded-xl shadow-inner">
-                        <h2 class="text-xl font-semibold text-primary-blue mb-4">Participant Information</h2>
-                        <form id="info-form" class="space-y-4">
-                            <div>
-                                <label for="name" class="block text-left text-sm font-medium text-gray-700">Name:</label>
-                                <input type="text" id="name" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-primary-blue focus:border-primary-blue text-base" required>
-                            </div>
-                            <div>
-                                <label for="age" class="block text-left text-sm font-medium text-gray-700">Age:</label>
-                                <input type="number" id="age" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-primary-blue focus:border-primary-blue text-base" min="18" required>
-                            </div>
-                            <div>
-                                <label for="gender" class="block text-left text-sm font-medium text-gray-700">Gender:</label>
-                                <select id="gender" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-primary-blue focus:border-primary-blue text-base" required>
-                                    <option value="" disabled selected>Select...</option>
-                                    <option value="male">male</option>
-                                    <option value="female">female</option>
-                                    <option value="Non-binary">Non-binary</option>
-                                    <option value="Prefer not to say">Prefer not to say</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label for="hasSiblings" class="block text-left text-sm font-medium text-gray-700">Do you have siblings?</label>
-                                <select id="hasSiblings" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-primary-blue focus:border-primary-blue text-base" required>
-                                    <option value="" disabled selected>Select...</option>
-                                    <option value="yes">Yes</option>
-                                    <option value="no">No</option>
-                                </select>
-                            </div>
-                            <button type="submit" class="w-full py-3 bg-primary-blue text-white font-bold text-lg rounded-lg hover:bg-blue-700 transition duration-150 shadow-md">
-                                Start Instructions
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            `;
-            renderScreen(content);
-
-            document.getElementById('info-form').onsubmit = (e) => {
-                e.preventDefault();
-                currentTrial.name = document.getElementById('name').value;
-                currentTrial.age = parseInt(document.getElementById('age').value);
-                currentTrial.gender = document.getElementById('gender').value;
-                currentTrial.hasSiblings = document.getElementById('hasSiblings').value;
-                currentTrial.experiment_start_time = new Date().toISOString();
-                
-                if (currentTrial.name && currentTrial.age >= 18 && currentTrial.gender && currentTrial.hasSiblings) {
-                    renderInstructionScreen();
-                } 
-            };
-        }
-
-        function renderInstructionScreen() {
-            const content = `
-                <div class="text-left space-y-4">
-                    <h2 class="text-2xl font-bold text-gray-800 border-b pb-2">Experiment Instructions</h2>
-                    
-                    <p class="text-base text-gray-700">
-                        In this experiment, you will see two columns of liquid representing "shares".
-                        <span class="font-semibold text-primary-blue">The share on the left is always Your Share.</span> 
-                        <span class="font-semibold text-primary-blue">The share on the right is always your Sibling's Share.</span>
-                    </p>
-
-                    <h3 class="text-xl font-semibold text-gray-800">Your Task</h3>
-                    <p class="text-base text-gray-700">
-                        For each trial, you must quickly answer a question based on the two shares using the **'Y' key** (Yes) or the **'N' key** (No) on your keyboard.
-                    </p>
-                    
-                    <ul class="list-disc list-inside space-y-2 ml-4 bg-yellow-50 p-4 rounded-lg border border-yellow-200 text-base">
-                        <li class="font-semibold text-gray-800">Press **'Y'** for Yes</li>
-                        <li class="font-semibold text-gray-800">Press **'N'** for No</li>
-                    </ul>
-
-                    <p class="text-base text-gray-700">
-                        The question will change throughout the experiment, asking if your share is "DIFFERENT", "MORE", or "LESS" than your sibling's. Please read the question carefully each time.
-                    </p>
-
-                    <h3 class="text-xl font-semibold text-gray-800">The Trials</h3>
-                    <p class="text-base text-gray-700">
-                        You will first complete **9 Practice Trials** followed by **63 Main Trials**. The entire experiment takes about **8-10 minutes**. Please try to be as accurate and quick as possible!
-                    </p>
-
-                    <div class="flex justify-center mt-6">
-                        <button id="start-btn" class="px-6 py-3 bg-green-600 text-white font-bold text-lg rounded-lg hover:bg-green-700 transition duration-150 shadow-md">
-                            Start Practice Trials
-                        </button>
-                    </div>
-                </div>
-            `;
-            renderScreen(content);
-            document.getElementById('start-btn').onclick = () => startExperiment();
-        }
-
-        // Function to generate the trial screen content
-        function renderTrialScreen() {
-           const trial = experimentData[trialIndex];
-           if (!trial) {
-           clearTimeout(timeoutHandler);
-           document.removeEventListener('keydown', handleKeyResponse);
-           return renderThankYouScreen();
-          }
-
-    const heightS = scaleItoHeight(trial.I_Standard);
-    const heightC = scaleItoHeight(trial.I_Comparison);
-    const promptHTML = trial.prompt.replace(/\*\*(.*?)\*\*/g, '<span class="text-primary-blue font-extrabold">$1</span>');
-    const timeLimitSec = (RESPONSE_TIME_LIMIT_MS / 1000).toFixed(1);
-
-    const content = `
-        <div class="flex flex-col items-center text-center space-y-4">
-            <div class="text-base font-medium text-gray-500" style="visibility: hidden; height: 0; overflow: hidden;">
-                Trial ${trialIndex + 1} of ${experimentData.length} (${trial.type})
-                <span class="text-red-600 font-bold ml-4">Time Remaining: <span id="timer-display">${timeLimitSec}</span>s</span>
-            </div>
-            
-            <div class="w-full max-w-lg bg-bg-gray p-4 rounded-lg shadow-inner border-2 border-primary-blue/50">
-                <p id="question-prompt" class="text-xl font-bold text-gray-800 transition duration-150">
-                    ${promptHTML}
-                </p>
-            </div>
-
-            <div class="glass-wrapper"> 
-                <div class="flex flex-col items-center">
-                    <div class="text-base font-semibold text-gray-700 mb-2">Your Share</div>
-                    <div class="glass max-container">
-                        <div id="comparison-liquid" class="liquid" style="height: ${heightC}px;"></div>
-                        <div class="vertical-black-line" style="height: ${heightC}px; left: 48px;"></div>
-                    </div>
-                </div>
-
-                <div class="flex flex-col items-center">
-                    <div class="text-base font-semibold text-gray-700 mb-2">Sibling's Share</div>
-                    <div class="glass max-container">
-                        <div class="liquid" style="height: ${heightS}px;"></div>
-                        <div class="vertical-black-line" style="height: ${heightS}px; left: 48px;"></div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="mt-4">
-                <p class="text-lg font-semibold text-gray-600">Press **Y** (Yes) or **N** (No)</p>
-            </div>
-        </div>
-    `;
-    renderScreen(content);
-    
-    startTime = performance.now();
-    startTrialTimer();
-}
-
-        function renderThankYouScreen() {
-            const content = `
-                <div class="flex flex-col items-center text-center space-y-4">
-                    <h2 class="text-3xl font-extrabold text-green-600 mb-4">Experiment Complete!</h2>
-                    <p class="text-lg text-gray-700">
-                        Thank you for your invaluable participation. Your results are ready to be saved.
-                    </p>
-                    
-                    <p class="text-xl font-semibold text-gray-800 mt-4">
-                        Click below to download your data file and finalize your participation.
-                    </p>
-
-                    <button id="submit-btn" class="px-8 py-4 bg-primary-blue text-white font-bold text-xl rounded-lg hover:bg-blue-700 transition duration-150 shadow-lg">
-                        Download Data File & Finish
-                    </button>
-
-                    <div id="data-status" class="mt-3 text-green-600 font-medium text-sm hidden">
-                        Data is being prepared...
-                    </div>
-                </div>
-            `;
-            renderScreen(content);
-            document.getElementById('submit-btn').onclick = () => submitDataToGoogleForm();
-        }
-
-        // --- EXPERIMENT LOGIC ---
-
-        function startExperiment() {
-            experimentData = generateTrialList();
-            trialIndex = 0;
-            experimentData.forEach(trial => {
-                Object.assign(trial, {
-                    name: currentTrial.name,
-                    age: currentTrial.age,
-                    gender: currentTrial.gender,
-                    hasSiblings: currentTrial.hasSiblings,
-                    experiment_start_time: currentTrial.experiment_start_time,
-                    userId: userId,
+            for (let i = 0; i < 10; i++) {
+                 practiceTrialList.push({
+                    I_standard: practiceStandards[i],
+                    is_catch: practicePerc[i] === 0,
+                    is_adaptive: false,
+                    staircase_I_index: null,
+                    perc_delta_I: practicePerc[i], 
+                    is_practice: true
                 });
+            }
+
+            mainTrialList = list.map((trial, index) => ({ ...trial, index: index, is_practice: false }));
+        };
+
+        const runTrial = () => {
+            let trialTemplate; 
+
+            if (isPractice) {
+                if (currentTrialIndex >= practiceTrialList.length) {
+                    renderPracticeCompleteScreen();
+                    return;
+                }
+                trialTemplate = practiceTrialList[currentTrialIndex];
+            } else {
+                if (currentTrialIndex >= mainTrialList.length + practiceTrialList.length) {
+                    renderFinalScreen();
+                    return;
+                }
+
+                // Check for block break
+                if (mainTrialsCompletedInBlock >= TRIALS_PER_BLOCK) {
+                    currentBlock++;
+                    mainTrialsCompletedInBlock = 0;
+                    if (currentBlock <= NUM_BLOCKS) {
+                        renderBlockBreak();
+                        return;
+                    } else {
+                        renderFinalScreen();
+                        return;
+                    }
+                }
+
+                const mainTrialIndex = currentTrialIndex - practiceTrialList.length;
+                trialTemplate = mainTrialList[mainTrialIndex];
+            }
+
+            const currentTrial = { ...trialTemplate }; 
+            trialData.push(currentTrial);
+            
+            // --- Determine Delta I ---
+            let Delta_I;
+            if (currentTrial.is_practice) {
+                Delta_I = currentTrial.perc_delta_I * currentTrial.I_standard;
+            } else if (currentTrial.is_catch) {
+                Delta_I = 0;
+            } else {
+                const handler = staircaseHandlers[currentTrial.I_standard];
+                if (!handler.isTerminated) {
+                   Delta_I = handler.getCurrentDeltaI();
+                } else {
+                   Delta_I = parseFloat(handler.calculateJND().JND) || handler.getCurrentDeltaI();
+                }
+                
+                currentTrial.perc_delta_I = handler.currentPerc;
+                currentTrial.delta_i_value = Delta_I;
+            }
+
+            const I_standard = currentTrial.I_standard;
+            const I_comparison = I_standard + Delta_I;
+
+            // --- Randomize side ---
+            let left_I, right_I, comparison_side;
+            if (Math.random() < 0.5) { 
+                left_I = I_comparison;
+                right_I = I_standard;
+                comparison_side = 'left';
+            } else { 
+                left_I = I_standard;
+                right_I = I_comparison;
+                comparison_side = 'right';
+            }
+
+            // --- Calculate heights using SCALING_FACTOR ---
+            const leftHeightPX = (left_I * SCALING_FACTOR);
+            const rightHeightPX = (right_I * SCALING_FACTOR);
+            
+            const totalTrialsOverall = isPractice ? practiceTrialList.length : TOTAL_TRIALS_MAIN;
+            
+            let blockDisplay;
+            let totalTrialsDone;
+            if (isPractice) {
+                blockDisplay = 'PRACTICE';
+                totalTrialsDone = currentTrialIndex + 1;
+            } else {
+                blockDisplay = `BLOCK ${currentBlock}/${NUM_BLOCKS}`;
+                totalTrialsDone = currentTrialIndex - practiceTrialList.length + 1;
+            }
+
+
+            const content = `
+                <div class="fixed top-4 left-4 text-sm font-semibold text-gray-700 bg-white p-2 rounded-lg shadow z-20">
+                    ${blockDisplay} | Trial: ${totalTrialsDone} / ${totalTrialsOverall}
+                </div>
+                
+                <h2 class="text-3xl font-bold mb-10 text-gray-800">Are the two glasses filled with the <span class="text-green-600">SAME</span> or <span class="text-red-600">DIFFERENT</span> amount of liquid?</h2>
+                
+                <div id="stimuli-area" class="flex justify-center items-end h-[${GLASS_MAX_HEIGHT_PX + 50}px] mb-10">
+                    <div class="stimulus-vial">
+                        <div class="stimulus-liquid" style="height: ${leftHeightPX.toFixed(1)}px;"></div>
+                    </div>
+                    <div class="stimulus-vial">
+                        <div class="stimulus-liquid" style="height: ${rightHeightPX.toFixed(1)}px;"></div>
+                    </div>
+                </div>
+                
+                <div class="flex justify-center space-x-12 mt-12">
+                    <button id="same-btn" class="w-48 py-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg shadow-md transition duration-150">
+                        SAME (${KEY_SAME.toUpperCase()})
+                    </button>
+                    <button id="different-btn" class="w-48 py-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-md transition duration-150">
+                        DIFFERENT (${KEY_DIFFERENT.toUpperCase()})
+                    </button>
+                </div>
+            `;
+            
+            renderScreen(content);
+            isWaitingForResponse = true;
+            currentTrial.response_time_start = performance.now();
+            currentTrial.comparison_side = comparison_side;
+
+            document.getElementById('same-btn').onclick = () => recordResponse(KEY_SAME.toUpperCase());
+            document.getElementById('different-btn').onclick = () => recordResponse(KEY_DIFFERENT.toUpperCase());
+
+            timeoutID = setTimeout(() => {
+                if (isWaitingForResponse) {
+                    recordResponse('Timeout'); 
+                }
+            }, RESPONSE_TIME_LIMIT_MS);
+        };
+        
+        const recordResponse = (responseKey) => {
+            if (!isWaitingForResponse && responseKey !== 'Timeout') return;
+            
+            if (timeoutID) {
+                clearTimeout(timeoutID);
+                timeoutID = null;
+            }
+
+            isWaitingForResponse = false;
+            let rt;
+            let isCorrect;
+            
+            const trial = trialData[currentTrialIndex];
+            const Delta_I = trial.is_practice ? (trial.perc_delta_I * trial.I_standard) : (trial.delta_i_value || 0);
+
+            const correctResponse = (Delta_I === 0) ? KEY_SAME.toUpperCase() : KEY_DIFFERENT.toUpperCase();
+            
+            if (responseKey === 'Timeout') { 
+                rt = RESPONSE_TIME_LIMIT_MS;
+                isCorrect = false; 
+                responseKey = 'TIMEOUT';
+            } else {
+                rt = performance.now() - trial.response_time_start;
+                isCorrect = responseKey === correctResponse;
+            }
+            
+            trial.response = responseKey;
+            trial.rt = rt.toFixed(2);
+            trial.is_correct = isCorrect;
+            trial.delta_i_value = Delta_I.toFixed(3);
+            trial.correct_response_key = correctResponse;
+            trial.trial_type = trial.is_catch ? 'Catch' : (trial.is_adaptive ? 'Adaptive' : 'Practice');
+            trial.timestamp = new Date().toISOString();
+
+            if (!isPractice && trial.is_adaptive) {
+                staircaseHandlers[trial.I_standard].addData(isCorrect);
+            }
+            
+            endTrial(isCorrect);
+        };
+        
+        const endTrial = (isCorrect) => {
+            container.innerHTML = '';
+            
+            let itiDuration = isPractice ? ITI_PRACTICE_MS : ITI_FIXATION_MS;
+            let cueContent;
+            
+            if (isPractice) {
+                cueContent = `
+                    <p class="text-8xl">${isCorrect ? '✅' : '❌'}</p>
+                    <p id="feedback-message" class="${isCorrect ? 'text-green-500' : 'text-red-500'}">
+                        ${isCorrect ? 'CORRECT' : 'WRONG'}</p>
+                `;
+                feedbackCue.style.backgroundColor = 'transparent';
+            } else {
+                cueContent = `<p class="text-8xl text-white">+</p>`;
+                feedbackCue.style.backgroundColor = '#000';
+                feedbackCue.style.color = '#fff';
+            }
+
+            document.getElementById('cue-content').innerHTML = cueContent;
+            feedbackCue.style.opacity = '1';
+
+            setTimeout(() => {
+                feedbackCue.style.opacity = '0';
+                feedbackCue.style.backgroundColor = 'transparent';
+                document.getElementById('cue-content').innerHTML = '';
+                
+                currentTrialIndex++;
+                if (!isPractice) {
+                    mainTrialsCompletedInBlock++;
+                }
+                
+                runTrial(); 
+
+            }, itiDuration); 
+        };
+
+        // --- RENDER SCREEN FUNCTIONS ---
+
+        const renderScreen = (content) => {
+            container.innerHTML = content;
+            // Removed: updateAccuracyDisplay();
+        };
+
+        const renderWelcomeScreen = () => {
+            // Full Reset
+            isPractice = true;
+            currentBlock = 0;
+            currentTrialIndex = 0;
+            trialData = [];
+            staircaseHandlers = {};
+            I_STANDARD_LEVELS.forEach(I => { staircaseHandlers[I] = new ProportionalStaircase(I); });
+            generateMasterTrialList();
+
+            const content = `
+                <h1 class="text-4xl font-bold mb-6 text-primary-blue">The Fair-Share Task</h1>
+                <p class="text-lg mb-4">Welcome. This task explores how accurately you can judge differences in quantity.</p>
+                <p class="text-lg mb-8 font-semibold">Please read the instructions carefully before proceeding.</p>
+                <button onclick="renderDemographicsScreen()" class="bg-primary-blue hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition duration-150">
+                    Continue to Participant Details
+                </button>
+            `;
+            renderScreen(content);
+        };
+        
+        const renderDemographicsScreen = () => {
+             const content = `
+                <h2 class="text-3xl font-bold mb-6 text-primary-blue">Participant Details</h2>
+                <div class="text-left max-w-lg mx-auto space-y-4">
+                    <div class="space-y-1">
+                        <label for="name" class="block text-lg font-semibold text-gray-700">Name/ID:</label>
+                        <input type="text" id="name" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-primary-blue focus:border-primary-blue" placeholder="Enter your identifier or name" required>
+                    </div>
+                    <div class="space-y-1">
+                        <label for="age" class="block text-lg font-semibold text-gray-700">Age:</label>
+                        <input type="number" id="age" min="10" max="100" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-primary-blue focus:border-primary-blue" placeholder="Enter your age" required>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="block text-lg font-semibold text-gray-700">Sex/Gender:</label>
+                        <div class="flex space-x-4">
+                            <label><input type="radio" name="sex" value="Male" required> Male</label>
+                            <label><input type="radio" name="sex" value="Female"> Female</label>
+                            <label><input type="radio" name="sex" value="Other"> Other</label>
+                            <label><input type="radio" name="sex" value="PNA"> Prefer not to answer</label>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="block text-lg font-semibold text-gray-700">Do you have a sibling?</label>
+                        <div class="flex space-x-4">
+                            <label><input type="radio" name="sibling" value="Yes" required> Yes</label>
+                            <label><input type="radio" name="sibling" value="No"> No</label>
+                            <label><input type="radio" name="sibling" value="PNA"> Prefer not to say</label>
+                        </div>
+                    </div>
+                    <p id="demographics-error" class="text-red-500 font-semibold hidden">Please fill out all required fields.</p>
+                </div>
+                <button onclick="submitDemographics()" class="mt-10 bg-primary-blue hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition duration-150">
+                    Submit & Continue
+                </button>
+            `;
+            renderScreen(content);
+        };
+        
+        const submitDemographics = () => {
+            const name = document.getElementById('name').value.trim();
+            const age = document.getElementById('age').value.trim();
+            const sex = document.querySelector('input[name="sex"]:checked');
+            const sibling = document.querySelector('input[name="sibling"]:checked');
+            const errorDisplay = document.getElementById('demographics-error');
+
+            if (!name || !age || !sex || !sibling) {
+                errorDisplay.classList.remove('hidden');
+                return;
+            }
+            
+            if (isNaN(parseInt(age)) || parseInt(age) < 10) { 
+                 errorDisplay.textContent = "Please enter a valid age (must be a number).";
+                 errorDisplay.classList.remove('hidden');
+                 return;
+            }
+
+            participantInfo.name = name;
+            participantInfo.age = age;
+            participantInfo.sex = sex.value;
+            participantInfo.has_sibling = sibling.value;
+            
+            errorDisplay.classList.add('hidden');
+            renderInstructions(); 
+        };
+
+        const renderInstructions = () => {
+            const content = `
+                <h2 class="text-3xl font-bold mb-6 text-primary-blue">Task Instructions</h2>
+                <div class="text-left space-y-4 text-lg">
+                    
+                    <h3 class="font-bold text-xl text-gray-800">1. Experiment Overview:</h3>
+                    <p>In this experiment, you will see two side-by-side glasses on the screen. Each glass container has a coloured liquid inside.</p>
+
+                    <h3 class="font-bold text-xl text-gray-800">2. Your Task:</h3>
+                    <p>Your goal is to decide whether the height of the liquid inside the two rectangles is the <span class="text-green-600 font-bold">SAME</span> or <span class="text-red-600 font-bold">DIFFERENT</span>.</p>
+
+                    <h3 class="font-bold text-xl text-gray-800">3. Response Format:</h3>
+                    <p>After the glasses appear, please press the key/button labelled 
+                       <span class="font-mono bg-gray-200 p-1 rounded-sm">SAME</span> 
+                       (<span class="font-bold text-green-600">S</span> KEY) if you think both liquid heights are equal, or 
+                       <span class="font-mono bg-gray-200 p-1 rounded-sm">DIFFERENT</span> 
+                       (<span class="font-bold text-red-600">D</span> KEY) if you think the heights are not the same.
+                    </p>
+
+                    <h3 class="font-bold text-xl text-gray-800">4. Stimulus Presentation:</h3>
+                    <p>The difference in liquid heights may be very subtle. Sometimes it will be easy to tell, sometimes quite hard. Do not worry! There’s no right answer. Please respond as intuitively and accurately as possible.</p>
+
+                    <h3 class="font-bold text-xl text-gray-800">5. Speed:</h3>
+                    <p>You have **3 seconds** to respond to each trial. Try to answer as soon as you feel confident. Please avoid guessing randomly. If unsure, give your best guess.</p>
+
+                    <h3 class="font-bold text-xl text-gray-800">6. Practice Trials:</h3>
+                    <p>First, you will complete 10 practice trials to familiarize yourself with the task before the main experiment begins. You will receive immediate feedback during practice.</p>
+
+                    <h3 class="font-bold text-xl text-gray-800">7. Session Length:</h3>
+                    <p>The experiment will have **5 blocks**, each with **36 trials**, for a total of **180 trials**. You can take brief breaks between blocks if needed.</p>
+                    
+                    <h3 class="font-bold text-xl text-gray-800">8. Importance of Focus:</h3>
+                    <p>Please focus on the task and try to minimize distractions to help us get accurate results.</p>
+                </div>
+                <button onclick="startPractice()" class="mt-10 bg-primary-blue hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition duration-150">
+                    Start Practice Block (10 Trials)
+                </button>
+            `;
+            renderScreen(content);
+        };
+        
+        const startPractice = () => {
+            isPractice = true; 
+            currentTrialIndex = 0; 
+            runTrial(); 
+        };
+
+        const renderPracticeCompleteScreen = () => {
+            const practiceData = trialData.filter(t => t.is_practice);
+            const totalPractice = practiceData.length;
+            const correctPractice = practiceData.filter(t => t.is_correct).length;
+            const practiceAccuracy = ((correctPractice / totalPractice) * 100).toFixed(1);
+
+            const content = `
+                <h2 class="text-3xl font-bold mb-6 text-green-600">Practice Complete!</h2>
+                <div class="text-left space-y-4 text-lg">
+                    <p>You have finished the practice trials.</p>
+                    <p class="text-2xl font-semibold mt-2">Practice Accuracy: <span class="font-extrabold text-primary-blue">${practiceAccuracy}%</span></p>
+                    <p class="font-bold mt-4">The main experiment consists of ${NUM_BLOCKS} blocks with ${TRIALS_PER_BLOCK} trials in each block, for a total of ${TOTAL_TRIALS_MAIN} trials.</p>
+                </div>
+                <button onclick="startExperiment()" class="mt-10 bg-primary-blue hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition duration-150">
+                    Start Main Experiment
+                </button>
+            `;
+            renderScreen(content);
+        };
+
+        const startExperiment = () => {
+            isPractice = false;
+            currentBlock = 1;
+            currentTrialIndex = practiceTrialList.length; 
+            mainTrialsCompletedInBlock = 0;
+            runTrial();
+        };
+
+        const renderBlockBreak = () => {
+            const blockProgress = currentBlock - 1; 
+            
+            // Removed: Accuracy calculation for block break
+            
+            const content = `
+                <h2 class="text-3xl font-bold mb-6 text-primary-blue">Block ${blockProgress} of ${NUM_BLOCKS} Complete</h2>
+                <p class="text-xl mb-8">Please take a short break.</p>
+                <div class="text-lg space-y-2">
+                    <p>You are about to start Block ${currentBlock}.</p>
+                </div>
+                <button onclick="continueFromBreak()" class="mt-10 bg-primary-blue hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition duration-150">
+                    Continue Experiment
+                </button>
+            `;
+            renderScreen(content);
+            isWaitingForResponse = false; // Mouse click will handle progression
+        };
+
+        const continueFromBreak = () => {
+            runTrial();
+        };
+
+        const renderFinalScreen = () => {
+            const mainData = trialData.filter(t => !t.is_practice);
+            const totalMain = mainData.length;
+            const correctMain = mainData.filter(t => t.is_correct).length;
+            const finalAccuracy = totalMain > 0 ? ((correctMain / totalMain) * 100).toFixed(1) : 'N/A';
+            
+            const jndResults = calculateAllJNDs();
+            const jndTable = I_STANDARD_LEVELS.map(I => {
+                const results = jndResults.JNDsByStandard[I];
+                return `
+                    <tr class="border-b">
+                        <td class="p-2 font-bold">${I} units</td>
+                        <td class="p-2">${results.JND}</td>
+                        <td class="p-2">${results.Consistency}</td>
+                        <td class="p-2">${results.kValue}</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            const content = `
+                <h2 class="text-4xl font-bold mb-6 text-primary-blue">Experiment Complete!</h2>
+                <p class="text-xl mb-4">Thank you for participating. Your calculated results are below.</p>
+                
+                <div class="bg-blue-50 p-6 rounded-xl space-y-3 shadow-inner mb-8">
+                    <p class="text-2xl font-semibold text-green-700">Overall Accuracy: <span class="font-extrabold">${finalAccuracy}%</span></p>
+                    <p class="text-2xl font-semibold text-red-700">Overall JND: <span class="font-extrabold">${jndResults.OverallJND} units</span></p>
+                </div>
+
+                <h3 class="text-2xl font-bold mb-4">JND by Standard Intensity</h3>
+                <table class="w-full text-left mx-auto bg-white rounded-lg shadow-md mb-8">
+                    <thead>
+                        <tr class="bg-gray-200">
+                            <th class="p-2">I Standard</th>
+                            <th class="p-2">JND (units)</th>
+                            <th class="p-2">Consistency (SD)</th>
+                            <th class="p-2">Weber Fraction (k)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${jndTable}
+                    </tbody>
+                </table>
+                
+                <p class="mt-8 text-lg">Click the button below to download your data file.</p>
+                <button id="submit-btn" onclick="downloadData()" class="mt-6 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition duration-150">
+                    Download Data File (CSV)
+                </button>
+                <p id="data-status" class="mt-4 text-sm font-semibold text-green-600"></p>
+            `;
+            renderScreen(content);
+        };
+        
+        // --- KEYBOARD LISTENER (Only for S and D response keys) ---
+
+        document.addEventListener('keydown', (event) => {
+            const key = event.key.toLowerCase();
+            
+            if (isWaitingForResponse) {
+                if (key === KEY_SAME) {
+                    recordResponse(KEY_SAME.toUpperCase());
+                } else if (key === KEY_DIFFERENT) {
+                    recordResponse(KEY_DIFFERENT.toUpperCase());
+                } 
+            }
+        });
+
+        // --- DATA SAVING (Local Download to CSV) ---
+        
+        const convertToCSV = (data) => {
+            if (data.length === 0) return '';
+            
+            const headers = Object.keys(data[0]);
+            let csv = headers.join(',') + '\n';
+            
+            data.forEach(row => {
+                const values = headers.map(header => {
+                    let value = row[header];
+                    if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
+                        value = `"${value.replace(/"/g, '""')}"`;
+                    }
+                    return value;
+                });
+                csv += values.join(',') + '\n';
             });
             
-            document.addEventListener('keydown', handleKeyResponse);
-            startNextTrial();
-        }
+            return csv;
+        };
 
-        function handleKeyResponse(event) {
-            const key = event.key.toUpperCase();
-            if (key === 'Y' || key === 'N') {
-                clearTimeout(timeoutHandler); 
-                
-                const RT_ms = performance.now() - startTime;
-                
-                const trial = experimentData[trialIndex];
-                trial.trial_number = trialIndex + 1;
-                trial.response = key.toLowerCase(); 
-                trial.RT_ms = Math.round(RT_ms * 10) / 10;
-                trial.timed_out = false;
-                
-                trialIndex++;
-                renderFixationCross(); 
-            }
-        }
-
-        // --- DATA SUBMISSION (Local File Download) ---
-
-        async function submitDataToGoogleForm() {
-            // 1. Silent Firebase Backup (Keep this for redundancy)
-            document.getElementById('data-status').innerHTML = "Data is being prepared for download...";
-            document.getElementById('data-status').classList.remove('hidden');
-
-            if (db && userId) {
-                const docRef = collection(db, `artifacts/${appId}/public/data/fair_share_experiment_results`);
-                try {
-                    await addDoc(docRef, {
-                        userId: userId,
-                        name: currentTrial.name, 
-                        age: currentTrial.age,
-                        gender: currentTrial.gender,
-                        hasSiblings: currentTrial.hasSiblings,
-                        completionTime: new Date().toISOString(),
-                        experimentType: "Fair-Share Perception",
-                        data: experimentData
-                    });
-                    console.log("Data successfully backed up to Firebase Firestore.");
-                } catch (e) {
-                    console.error("Error saving data to Firestore (Silent backup failed): ", e);
-                }
-            }
-            
-            // 2. Prepare the data for local file download
+        const downloadData = () => {
             try {
-                // Combine participant info and trial data into a single object for the JSON file
-                const fullJsonData = JSON.stringify({
-                    participant_info: currentTrial,
-                    experiment_data: experimentData
-                }, null, 2); 
+                const jndResults = calculateAllJNDs();
+                const totalAccuracy = calculateAccuracy(true) * 100;
 
-                // Construct the filename using the participant's name
-                const safeName = currentTrial.name.replace(/\s+/g, '_'); 
-                const filename = `FairShareData_${safeName}_${Date.now()}.json`;
-
-                const blob = new Blob([fullJsonData], { type: 'application/json' });
+                // Prepare Metadata
+                const metadata = [
+                    `Metadata,Value`,
+                    `date,${new Date().toISOString()}`,
+                    `name,${participantInfo.name || 'N/A'}`,
+                    `age,${participantInfo.age || 'N/A'}`,
+                    `sex,${participantInfo.sex || 'N/A'}`,
+                    `has_sibling,${participantInfo.has_sibling || 'N/A'}`,
+                    `total_trials_main,${TOTAL_TRIALS_MAIN}`,
+                    `overall_accuracy,${totalAccuracy.toFixed(1)}%`,
+                    `overall_jnd,${jndResults.OverallJND}`,
+                    `rt_limit_ms,${RESPONSE_TIME_LIMIT_MS}`,
+                    `iti_fixation_ms,${ITI_FIXATION_MS}`,
+                    `num_blocks,${NUM_BLOCKS}`,
+                    `trials_per_block,${TRIALS_PER_BLOCK}`,
+                    `staircase_start_perc,${STAIR_START_PERC}`,
+                    `staircase_n_up,${STAIR_N_UP}`,
+                    `staircase_n_down,${STAIR_N_DOWN}`,
+                ];
                 
+                I_STANDARD_LEVELS.forEach(I => {
+                    const res = jndResults.JNDsByStandard[I];
+                    metadata.push(`jnd_i${I}_jnd,${res.JND}`);
+                    metadata.push(`jnd_i${I}_consistency_sd,${res.Consistency}`);
+                    metadata.push(`jnd_i${I}_weber_fraction_k,${res.kValue}`);
+                    metadata.push(`jnd_i${I}_num_reversals,${res.numReversals}`);
+                });
+
+                metadata.push(`--- Trial Details ---,`);
+                
+                const trialDetails = trialData.map((t, index) => ({
+                    timestamp: t.timestamp,
+                    is_practice: t.is_practice,
+                    block: t.is_practice ? 0 : (Math.floor((index - practiceTrialList.length) / TRIALS_PER_BLOCK) + 1), 
+                    trial_type: t.trial_type,
+                    i_standard: t.I_standard,
+                    perc_delta_i: t.perc_delta_I || 'N/A',
+                    delta_i_value: t.delta_i_value || 0,
+                    comparison_side: t.comparison_side,
+                    correct_response_key: t.correct_response_key,
+                    response_key: t.response,
+                    is_correct: t.is_correct,
+                    response_time_ms: t.rt,
+                    staircase_reversal_count: t.is_adaptive ? staircaseHandlers[t.I_standard].reversals.length : 'N/A',
+                }));
+
+
+                const csvContent = metadata.join('\n') + '\n' + convertToCSV(trialDetails);
+                const filename = `AdaptiveJND_${participantInfo.name || 'Anonymous'}_${Date.now()}.csv`;
+
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
+                
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = filename;
@@ -669,25 +878,16 @@
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
 
-                console.log(`Successfully generated and downloaded file: ${filename}`);
-
+                document.getElementById('submit-btn').disabled = true;
+                document.getElementById('submit-btn').innerHTML = "File Downloaded!";
+                document.getElementById('data-status').innerHTML = `Data file **${filename}** downloaded.`;
             } catch (e) {
-                console.error("CRITICAL: Error during local file download process:", e);
-                document.getElementById('data-status').innerHTML = "Error preparing download. Please contact the researcher.";
-                return;
+                document.getElementById('data-status').innerHTML = "Error preparing download: " + e.message;
             }
-
-            // 3. Update UI to instruct the user on the next step
-            document.getElementById('submit-btn').disabled = true;
-            document.getElementById('submit-btn').innerHTML = "File Downloaded!";
-            document.getElementById('data-status').classList.add('text-black');
-            document.getElementById('data-status').classList.remove('text-green-600');
-            document.getElementById('data-status').innerHTML = "Data file **FairShareData...json** downloaded. **Please locate the file and follow the instructions provided by the researcher (e.g., email or upload the file).**";
-        }
+        };
 
         // --- STARTUP ---
-        window.onload = async () => {
-            await initializeFirebase();
+        window.onload = () => {
             renderWelcomeScreen();
         };
 
