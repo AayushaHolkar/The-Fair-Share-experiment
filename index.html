@@ -79,14 +79,14 @@
 <body class="font-sans min-h-screen flex items-center justify-center p-4">
 
     <div id="experiment-container" class="container-box max-w-4xl w-full p-8 rounded-xl text-center">
-        </div>
+    </div>
 
     <div id="feedback-cue">
         <div id="cue-content"></div>
     </div>
     
     <script>
-        // --- 1. CORE CONFIGURATION CONSTANTS (180 Trials, 5 Blocks of 36) ---
+        // --- 1. CORE CONFIGURATION CONSTANTS (200 Trials Main, 5 Blocks of 40) ---
         
         // Staircase Parameters
         const STAIR_START_PERC = 0.14;        
@@ -96,20 +96,20 @@
         const STAIR_MIN_PERC = 0.02;          
         const STAIR_MAX_REVERSALS = 8;        
         
-        // Trial Design Parameters
-        const I_STANDARD_LEVELS = [50, 100, 150]; 
+        // Trial Design Parameters (UPDATED 1)
+        const I_STANDARD_LEVELS = [50, 75, 100, 125, 150]; // NEW 5 Standard Levels
         const NUM_STAIRCASES = I_STANDARD_LEVELS.length;
         
-        // Main Experiment Structure
+        // Main Experiment Structure (UPDATED 2, 3)
         const NUM_BLOCKS = 5;                 
-        const TOTAL_TRIALS_MAIN = 180;        
-        const TRIALS_PER_BLOCK = 36;          
-        
-        // Trials per baseline (staircase)
-        const BASELINE_TOTAL_TRIALS = 60;     
+        const TOTAL_TRIALS_MAIN = 200;        // 5 Staircases * 40 Trials
+        const TRIALS_PER_BLOCK = 40;          // 200 Trials / 5 Blocks
+
+        // Trials per baseline (staircase) (UPDATED 2, 3)
+        const BASELINE_TOTAL_TRIALS = 40;     // New baseline total
         const CATCH_TRIAL_PERC = 0.20;        
-        const NUM_CATCH_TRIALS = 12;          
-        const STAIR_MAX_TRIALS = 48;          
+        const NUM_CATCH_TRIALS = 8;           // 20% of 40 trials
+        const STAIR_MAX_TRIALS = 32;          // 80% of 40 trials (Adaptive)
 
         // Timing & Responses
         const ITI_PRACTICE_MS = 2000;         
@@ -122,13 +122,15 @@
         // Visuals and Scaling
         const GLASS_MAX_HEIGHT_PX = 250;      
         const MAX_I_VALUE = 150;              
+        // MAX_I_VALUE * (1 + STAIR_START_PERC) = 150 * 1.14 = 171
         const MAX_POSSIBLE_I_COMP = MAX_I_VALUE * (1 + STAIR_START_PERC); 
+        // Scaling factor remains the same for visual stability
         const SCALING_FACTOR = GLASS_MAX_HEIGHT_PX / (MAX_POSSIBLE_I_COMP * 1.25); 
         
         // JND Calculation
         const REVERSALS_TO_AVERAGE = 6;       
 
-        // --- 2. ADAPTIVE STAIRCASE CLASS ---
+        // --- 2. ADAPTIVE STAIRCASE CLASS (NO CHANGE) ---
         class ProportionalStaircase {
             constructor(I_standard) {
                 this.I_standard = I_standard;
@@ -209,7 +211,7 @@
             }
         }
 
-        // --- 3. EXPERIMENT STATE & INITIALIZATION ---
+        // --- 3. EXPERIMENT STATE & INITIALIZATION (NO CHANGE) ---
         
         let participantInfo = {}; 
         let staircaseHandlers = {};
@@ -232,7 +234,7 @@
             staircaseHandlers[I] = new ProportionalStaircase(I);
         });
         
-        // --- 4. DATA LOGGING & CALCULATION ---
+        // --- 4. DATA LOGGING & CALCULATION (NO CHANGE) ---
 
         const calculateAllJNDs = () => {
             const results = {};
@@ -265,7 +267,7 @@
             return total > 0 ? (correct / total) : 0;
         };
         
-        // --- 5. TRIAL GENERATION & FLOW CONTROL ---
+        // --- 5. TRIAL GENERATION & FLOW CONTROL (Logic adapted for new constants) ---
 
         const shuffle = (array) => {
             for (let i = array.length - 1; i > 0; i--) {
@@ -277,11 +279,11 @@
         const generateMasterTrialList = () => {
             let list = [];
             
-            // 1. Generate ALL 60 trials per baseline (48 adaptive + 12 catch)
+            // 1. Generate ALL 40 trials per baseline (32 adaptive + 8 catch)
             for (const I_standard of I_STANDARD_LEVELS) {
                 let currentStaircaseTrials = [];
 
-                // Add 12 catch trials (Delta I = 0)
+                // Add 8 catch trials (Delta I = 0)
                 for (let i = 0; i < NUM_CATCH_TRIALS; i++) {
                     currentStaircaseTrials.push({
                         I_standard,
@@ -291,7 +293,7 @@
                     });
                 }
                 
-                // Add 48 adaptive trials
+                // Add 32 adaptive trials
                 for (let i = 0; i < STAIR_MAX_TRIALS; i++) {
                     currentStaircaseTrials.push({
                         I_standard,
@@ -308,7 +310,7 @@
             
             shuffle(list);
 
-            // 2. Set up practice trials (10 trials, fixed difference)
+            // 2. Set up practice trials (10 trials, fixed difference) (NO CHANGE)
             practiceTrialList = [];
             const practiceStandards = [100, 100, 50, 150, 50, 150, 100, 50, 150, 100];
             const practicePerc = [0.10, 0, 0.14, 0.05, 0, 0.12, 0.08, 0.10, 0, 0.03]; 
@@ -337,12 +339,13 @@
                 }
                 trialTemplate = practiceTrialList[currentTrialIndex];
             } else {
+                // Total main trials check (200)
                 if (currentTrialIndex >= mainTrialList.length + practiceTrialList.length) {
                     renderFinalScreen();
                     return;
                 }
 
-                // Check for block break
+                // Check for block break (Every 40 main trials)
                 if (mainTrialsCompletedInBlock >= TRIALS_PER_BLOCK) {
                     currentBlock++;
                     mainTrialsCompletedInBlock = 0;
@@ -419,7 +422,7 @@
                 
                 <h2 class="text-3xl font-bold mb-10 text-gray-800">Are the two glasses filled with the <span class="text-green-600">SAME</span> or <span class="text-red-600">DIFFERENT</span> amount of liquid?</h2>
                 
-                <div id="stimuli-area" class="flex justify-center items-end h-[${GLASS_MAX_HEIGHT_PX + 50}px] mb-10">
+                <div id="stimuli-area" class="flex justify-center items-end mb-10" style="height: ${GLASS_MAX_HEIGHT_PX + 50}px;">
                     <div class="stimulus-vial">
                         <div class="stimulus-liquid" style="height: ${leftHeightPX.toFixed(1)}px;"></div>
                     </div>
@@ -531,7 +534,7 @@
             }, itiDuration); 
         };
 
-        // --- RENDER SCREEN FUNCTIONS ---
+        // --- RENDER SCREEN FUNCTIONS (Instructions updated to reflect 210 trials total) ---
 
         const renderScreen = (content) => {
             container.innerHTML = content;
@@ -652,8 +655,8 @@
                     <h3 class="font-bold text-xl text-gray-800">6. Practice Trials:</h3>
                     <p>First, you will complete 10 practice trials to familiarize yourself with the task before the main experiment begins. You will receive immediate feedback during practice.</p>
 
-                    <h3 class="font-bold text-xl text-gray-800">7. Session Length:</h3>
-                    <p>The experiment will have **5 blocks**, each with **36 trials**, for a total of **180 trials**. You can take brief breaks between blocks if needed.</p>
+                    <h3 class="font-bold text-xl text-gray-800">7. Session Length: (UPDATED)</h3>
+                    <p>The experiment will have **5 blocks**, each with **40 trials**, for a total of **200 main trials** (and **210 trials** total including practice). You can take brief breaks between blocks if needed.</p>
                     
                     <h3 class="font-bold text-xl text-gray-800">8. Importance of Focus:</h3>
                     <p>Please focus on the task and try to minimize distractions to help us get accurate results.</p>
@@ -774,7 +777,7 @@
             renderScreen(content);
         };
         
-        // --- KEYBOARD LISTENER (Only for S and D response keys) ---
+        // --- KEYBOARD LISTENER (NO CHANGE) ---
 
         document.addEventListener('keydown', (event) => {
             const key = event.key.toLowerCase();
@@ -788,7 +791,7 @@
             }
         });
 
-        // --- DATA SAVING (Local Download to CSV) ---
+        // --- DATA SAVING (NO CHANGE) ---
         
         const convertToCSV = (data) => {
             if (data.length === 0) return '';
@@ -886,7 +889,7 @@
             }
         };
 
-        // --- STARTUP ---
+        // --- STARTUP (NO CHANGE) ---
         window.onload = () => {
             renderWelcomeScreen();
         };
